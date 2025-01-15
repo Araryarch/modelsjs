@@ -2,9 +2,8 @@ import * as tf from "@tensorflow/tfjs";
 
 // Data penjualan untuk beberapa hari
 import { dataMinuman } from "./dataset/data.js";
-import { Y } from "./dataset/label.js";
 
-// data
+// data yang mau di prediksi
 import { prediksi } from "./predicts/data.js";
 
 // Utility functions for data preprocessing
@@ -39,7 +38,10 @@ function prepareFeatures(data) {
     harga: { min: Math.min(...allHarga), max: Math.max(...allHarga) }
   };
 
-  const features = data.map(item => {
+  const features = [];
+  const labels = [];
+
+  data.forEach(item => {
     const penjualanStats = calculateStats(item.penjualan);
     const trendPenjualan =
       (item.penjualan[item.penjualan.length - 1] - item.penjualan[0]) /
@@ -48,7 +50,10 @@ function prepareFeatures(data) {
     const engagementScore =
       item.ulasan / item.rating * (item.stok < 30 ? 1.2 : 1.0);
 
-    return [
+    const kategori = calculateCategory(item.penjualan);
+
+    // Menambahkan kategori ke fitur
+    features.push([
       normalize(
         [penjualanStats.mean],
         stats.penjualan.min,
@@ -61,15 +66,31 @@ function prepareFeatures(data) {
       normalize([item.harga], stats.harga.min, stats.harga.max)[0],
       trendPenjualan,
       pricePerRating / stats.harga.max,
-      engagementScore / 100
-    ];
+      engagementScore / 100,
+      ...kategori // Menambahkan kategori ke fitur
+    ]);
+
+    labels.push(kategori); // Menyimpan kategori sebagai label
   });
 
-  return { features, stats };
+  return { features, labels, stats };
 }
 
-// Prepare features
-const { features: X, stats } = prepareFeatures(dataMinuman);
+// Function to calculate category for a product based on its sales trend
+function calculateCategory(penjualan) {
+  const avgPenjualan = penjualan.reduce((a, b) => a + b, 0) / penjualan.length;
+
+  if (penjualan[penjualan.length - 1] > avgPenjualan) {
+    return [0, 0, 1]; // Banyak diminati
+  } else if (penjualan[penjualan.length - 1] === avgPenjualan) {
+    return [0, 1, 0]; // Sedang diminati
+  } else {
+    return [1, 0, 0]; // Kurang diminati
+  }
+}
+
+// Prepare features and labels
+const { features: X, labels: Y, stats } = prepareFeatures(dataMinuman);
 
 // Convert to tensors
 const xs = tf.tensor2d(X);
@@ -78,7 +99,7 @@ const ys = tf.tensor2d(Y);
 // Create enhanced model architecture
 const model = tf.sequential();
 
-model.add(tf.layers.batchNormalization({ inputShape: [9] }));
+model.add(tf.layers.batchNormalization({ inputShape: [12] })); // inputShape = 12 karena ada 12 fitur
 
 model.add(
   tf.layers.dense({
@@ -148,6 +169,8 @@ async function trainModel() {
     const engagementScore =
       item.ulasan / item.rating * (item.stok < 30 ? 1.2 : 1.0);
 
+    const kategori = calculateCategory(item.penjualan);
+
     return [
       normalize(
         [penjualanStats.mean],
@@ -161,7 +184,8 @@ async function trainModel() {
       normalize([item.harga], stats.harga.min, stats.harga.max)[0],
       trendPenjualan,
       pricePerRating / stats.harga.max,
-      engagementScore / 100
+      engagementScore / 100,
+      ...kategori
     ];
   });
 
