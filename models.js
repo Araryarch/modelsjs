@@ -3,7 +3,7 @@ import * as tf from "@tensorflow/tfjs";
 // Data penjualan untuk beberapa hari
 import { dataMinuman } from "./dataset/data.js";
 
-// data yang mau di prediksi
+// data yang mau diprediksi
 import { prediksi } from "./predicts/data.js";
 
 // Utility functions for data preprocessing
@@ -52,7 +52,6 @@ function prepareFeatures(data) {
 
     const kategori = calculateCategory(item.penjualan);
 
-    // Menambahkan kategori ke fitur
     features.push([
       normalize(
         [penjualanStats.mean],
@@ -67,10 +66,10 @@ function prepareFeatures(data) {
       trendPenjualan,
       pricePerRating / stats.harga.max,
       engagementScore / 100,
-      ...kategori // Menambahkan kategori ke fitur
+      ...kategori
     ]);
 
-    labels.push(kategori); // Menyimpan kategori sebagai label
+    labels.push(kategori); // One-hot encoded
   });
 
   return { features, labels, stats };
@@ -103,19 +102,19 @@ model.add(tf.layers.batchNormalization({ inputShape: [12] })); // inputShape = 1
 
 model.add(
   tf.layers.dense({
-    units: 128, // Menambah jumlah unit
-    activation: "swish", // Aktivasi yang lebih canggih
+    units: 128,
+    activation: "swish",
     kernelInitializer: "glorotNormal",
     kernelRegularizer: tf.regularizers.l2({ l2: 0.01 })
   })
 );
 
-model.add(tf.layers.dropout({ rate: 0.5 })); // Menambah dropout untuk menghindari overfitting
+model.add(tf.layers.dropout({ rate: 0.5 }));
 model.add(tf.layers.batchNormalization());
 
 model.add(
   tf.layers.dense({
-    units: 64, // Menambah lapisan lebih banyak
+    units: 64,
     activation: "swish",
     kernelInitializer: "glorotNormal",
     kernelRegularizer: tf.regularizers.l2({ l2: 0.01 })
@@ -149,14 +148,23 @@ async function trainModel() {
     minDelta: 0.0001
   });
 
-  await model.fit(xs, ys, {
-    epochs: 300,
-    batchSize: 4,
-    validationSplit: 0.2,
-    callbacks: [earlyStopping],
-    shuffle: true,
-    verbose: 1
-  });
+  const totalEpochs = 1000;
+  const loopCount = 5; // Menentukan berapa kali loop untuk meningkatkan akurasi
+
+  for (let i = 0; i < loopCount; i++) {
+    console.log(`Training Loop ${i + 1} of ${loopCount}`);
+
+    await model.fit(xs, ys, {
+      epochs: totalEpochs / loopCount, // Membagi epoch untuk setiap iterasi loop
+      batchSize: 4,
+      validationSplit: 0.2,
+      callbacks: [earlyStopping],
+      shuffle: true,
+      verbose: 1
+    });
+
+    console.log(`Training Loop ${i + 1} Completed`);
+  }
 
   console.log("Training completed");
 
